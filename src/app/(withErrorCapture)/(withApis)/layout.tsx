@@ -16,6 +16,8 @@ import { SelfClient } from "@/integrations/self/SelfClient";
 import Client from "fhirclient/lib/Client";
 import { FhirApi } from "@/integrations/fhir/FhirApi";
 import ProxiedFhirClientWrapper from "@/integrations/fhir/ProxiedFhirClientWrapper";
+import { recognizedServers } from "@/integrations/fhir/recognizedServers";
+import FhirClientWrapper from "@/integrations/fhir/FhirClientWrapper";
 import { BaseApi, BaseApiContext, useBaseApi } from "@/app/(withErrorCapture)/(withApis)/BaseApi";
 
 export const dynamic = 'force-dynamic'
@@ -46,7 +48,14 @@ const Layout = ({children}: ChildrenProp) => {
         if (fakeFhirApiName.current === "fake1") {
             return initFakeFhirApi1()
         } else {
-            return fhirClientFactory().then(client => new ProxiedFhirClientWrapper(client))
+            return fhirClientFactory().then(client => {
+                const serverUrl = client.state.serverUrl
+                console.debug("========== fhirClientFactory, serverUrl ", serverUrl)
+                if(client.state.serverUrl === recognizedServers.WEBMED_TEST) {
+                    return new FhirClientWrapper(client)
+                }
+                return new ProxiedFhirClientWrapper(client)
+            })
         }
     }, [fhirClientFactory, fakeFhirApiName])
 
