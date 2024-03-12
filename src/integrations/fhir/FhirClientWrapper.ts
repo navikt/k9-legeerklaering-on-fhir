@@ -75,6 +75,8 @@ export default class FhirClientWrapper implements FhirApi {
                     departmentReference: undefined,
                 }
             }
+        } else {
+            console.debug("client.user.read returned", iPractitioner)
         }
         return undefined
     }
