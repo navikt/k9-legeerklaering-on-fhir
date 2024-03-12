@@ -52,7 +52,39 @@ export default class FhirClientWrapper implements FhirApi {
         }
     }
 
+    protected async getPractitionerDirectly(): Promise<Practitioner & { readonly organizationReference: string | undefined } | undefined> {
+        const practitionerId = this.client.user.id
+        console.debug("client.user.id", practitionerId)
+        if(practitionerId != null) {
+            const iPractitioner = await this.client.user.read()
+            if(R4.RTTI_Practitioner.is(iPractitioner)) {
+                console.debug("client.user (iPractitioner):", iPractitioner)
+                const practitioner = resolvePractitionerFromIPractitioner(iPractitioner)
+                console.debug("direct resolved practitioner", practitioner)
+                if(
+                    practitioner.ehrId !== undefined &&
+                    practitioner.name !== undefined
+                )
+                return {
+                    ehrId: practitioner.ehrId,
+                    name: practitioner.name,
+                    activeSystemUser: practitioner.activeSystemUser,
+                    // TODO Resolve these:
+                    organizationReference: undefined,
+                    hprNumber: undefined,
+                    practitionerRoleId: undefined,
+                    departmentReference: undefined,
+                }
+            }
+        }
+        return undefined
+    }
+
     public async getPractitioner(): Promise<Practitioner & { readonly organizationReference: string | undefined }> {
+        const practitioner = await this.getPractitionerDirectly()
+        if(practitioner !== undefined) {
+            return practitioner
+        }
         // For DIPS, accessing the client.user.read or similar did not work, have to request the "PractitionerRole" like we do below instead.
         // This seems to contain the Practitioner info we in the smart api demo would get back from client.user.read.
         // I suspect this is a non-standard API call. Will perhaps need to make this more dynamic to adapt to other EHR systems.
@@ -89,10 +121,10 @@ export default class FhirClientWrapper implements FhirApi {
             throw new Error(`No practitioner reference in PractitionerRole from $getCurrentUser`)
         }
         const iPractitioner = validateOrThrow(R4.RTTI_Practitioner.decode(await this.client.request(iPractitionerRole.practitioner.reference)))
-        const practitioner = resolvePractitionerFromIPractitioner(iPractitioner)
+        const partialPractitioner = resolvePractitionerFromIPractitioner(iPractitioner)
         const mergedPractitioner: PartialPractitioner = {
             ...practitionerFromRole,
-            ...practitioner,
+            ...partialPractitioner,
         }
         if (
             mergedPractitioner.ehrId !== undefined &&
