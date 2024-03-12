@@ -55,16 +55,15 @@ export default class FhirClientWrapper implements FhirApi {
     protected async getPractitionerDirectly(): Promise<Practitioner & { readonly organizationReference: string | undefined } | undefined> {
         const practitionerId = this.client.user.id
         console.debug("client.user.id", practitionerId)
-        if(practitionerId != null) {
-            const iPractitioner = await this.client.user.read()
-            if(R4.RTTI_Practitioner.is(iPractitioner)) {
-                console.debug("client.user (iPractitioner):", iPractitioner)
-                const practitioner = resolvePractitionerFromIPractitioner(iPractitioner)
-                console.debug("direct resolved practitioner", practitioner)
-                if(
-                    practitioner.ehrId !== undefined &&
-                    practitioner.name !== undefined
-                )
+        const iPractitioner = await this.client.user.read()
+        if(R4.RTTI_Practitioner.is(iPractitioner)) {
+            console.debug("client.user (iPractitioner):", iPractitioner)
+            const practitioner = resolvePractitionerFromIPractitioner(iPractitioner)
+            console.debug("direct resolved practitioner", practitioner)
+            if(
+                practitioner.ehrId !== undefined &&
+                practitioner.name !== undefined
+            ) {
                 return {
                     ehrId: practitioner.ehrId,
                     name: practitioner.name,
