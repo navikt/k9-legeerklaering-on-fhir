@@ -52,7 +52,21 @@ export default class FhirClientWrapper implements FhirApi {
         }
     }
 
+
+    /**
+     * On webmed the user id is returned in property "practitioner" in the tokenResponse.
+     * Our client does not automatically resolve the user.id prop from this, so we do it manually here.
+     *
+     * On Dips the user id is nowhere to be found on the tokenResponse, so this will not help there.
+     */
+    private fixClientUserId() {
+        if(this.client.user.id == null) {
+            this.client.user.id = this.client.state.tokenResponse?.["practitioner"] || null
+        }
+    }
+
     protected async getPractitionerDirectly(): Promise<Practitioner & { readonly organizationReference: string | undefined } | undefined> {
+        this.fixClientUserId()
         const practitionerId = this.client.user.id
         console.debug("client.user.id", practitionerId)
         const iPractitioner = await this.client.user.read()
