@@ -54,8 +54,8 @@ export default class FhirClientWrapper implements FhirApi {
 
 
     /**
-     * On webmed the user id is returned in property "practitioner" in the tokenResponse.
-     * Our client does not automatically resolve the user.id prop from this, so we do it manually here.
+     * On WebMed the user id is returned in property "practitioner" in the tokenResponse.
+     * Our client does not automatically resolve the {user.id} prop from this, so we do it manually here.
      *
      * On Dips the user id is nowhere to be found on the tokenResponse, so this will not help there.
      */
@@ -242,10 +242,5 @@ export default class FhirClientWrapper implements FhirApi {
             practitioner,
             hospital,
         }
-    }
-
-    public async ping(): Promise<boolean> {
-        const resp = await this.client.request("metadata")
-        return true
     }
 }
