@@ -32,7 +32,7 @@ export const clientInitInBrowser = async (isLaunch: boolean): Promise<Client> =>
              * user/*.* - UNUSED
              * offline_access - UNUSED
             **/
-            scope: "openid profile fhirUser launch patient/Patient.r",
+            scope: "openid profile fhirUser launch patient/*.read",
             redirectUri: "/"
         });
 
