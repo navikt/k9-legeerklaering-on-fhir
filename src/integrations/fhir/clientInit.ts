@@ -21,7 +21,18 @@ export const clientInitInBrowser = async (isLaunch: boolean): Promise<Client> =>
 
         const client: Client = await oauth2.init({
             clientId: fhirClientId,
-            scope: "launch patient/*.read openid fhirUser profile",
+            /** SUPPORTED SCOPES
+             * openid
+             * profile
+             * fhirUser
+             * launch
+             * launch/patient - UNUSED
+             * launch/encounter - UNUSED
+             * patient/*.*
+             * user/*.* - UNUSED
+             * offline_access - UNUSED
+            **/
+            scope: "openid profile fhirUser launch patient/*.*",
             redirectUri: "/"
         });
 
