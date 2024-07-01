@@ -4,7 +4,7 @@ import { JwtVerificationInput } from "@/auth/fhir/JwtVerificationInput";
 import { isIssuer, Issuer } from "@/auth/fhir/Issuer";
 import { HprNumber, isHprNumber } from "@/models/HprNumber";
 import { FhirSessionIssuers } from "@/auth/fhir/FhirSessionIssuers";
-import fhirClientId from "@/auth/fhir/fhirClientId";
+import fhirAuthOptions from "@/auth/fhir/fhirAuthOptions";
 
 export class FhirSession {
     /**
@@ -23,7 +23,7 @@ export class FhirSession {
             issuer: FhirSessionIssuers.all,             // Verify that issuer is one of the valid ones.
             algorithms: ['RS256', 'edDSA', 'ES256'],    // Verify that approved algorithm is used.
         }
-        const expectedClientId = fhirClientId
+        const expectedClientId = fhirAuthOptions.clientId
         try {
             const { payload, protectedHeader } = await jose.jwtVerify(verificationInput.jwt, verificationInput.getKey, options)
             // To verify that the received JWT is issued for our app, and not some other, we verify that the client_id

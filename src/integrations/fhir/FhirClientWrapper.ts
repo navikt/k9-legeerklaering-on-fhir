@@ -28,7 +28,7 @@ import {DipsDepartmentReference} from "@/models/DipsDepartmentReference";
 
 
 export default class FhirClientWrapper implements FhirApi {
-    private client: Client;
+    private readonly client: Client;
 
     public constructor(client: Client) {
         this.client = client;
@@ -62,24 +62,31 @@ export default class FhirClientWrapper implements FhirApi {
      *
      * Vi følger dokumentasjonen og forventer at bruker skal være satt, derfor vil dette ikke fungere
      * for enkelte EPJ-leverandører.
+     *
+     * DIPS and WebMed are separated as an illustration of complexity
      */
-    protected async getPractitionerDirectly(): Promise<Practitioner & {
+    protected async getWebMedPractitioner(): Promise<Practitioner & {
         readonly organizationReference: string | undefined
-    } | undefined> {
+    }> {
         // this.client.getUserId() || this.client.getFhirUser() --> skal inneholde data
         // this.client.state.tokenResponse?.["practitioner"] --> eneste som fungerer, men følger en dårlig standard
 
-        // TODO logging for EHR debugging purposes to see which FHIR fields are available
-        try {
-            console.info("[DEBUG] client", JSON.stringify(this.client))
-        } catch (err) {
-            console.error(err)
-        }
+        const userId = await this.client.state.tokenResponse?.["practitioner"]
 
-        const iPractitioner = await this.client.user.read()
+        let iPractitioner
+
+        if (userId) {
+            console.info(`[DEBUG] requesting practitioner from request(Patient/${userId})`)
+            iPractitioner = await this.client.request<Practitioner>(`Patient/${userId}`)
+        } else {
+            console.info("[DEBUG] setting practitioner from client.user.read")
+            iPractitioner = await this.client.user.read<Practitioner>()
+        }
 
         if (R4.RTTI_Practitioner.is(iPractitioner)) {
             const practitioner = resolvePractitionerFromIPractitioner(iPractitioner)
+            console.info("[DEBUG] practitioner", JSON.stringify(practitioner))
+
             if (practitioner.ehrId !== undefined && practitioner.name !== undefined) {
                 return {
                     ehrId: practitioner.ehrId,
@@ -92,40 +99,42 @@ export default class FhirClientWrapper implements FhirApi {
                     departmentReference: undefined,
                 }
             }
-            console.warn("[FhirClientWrapper.getPractitionerDirectly()] practitioner.ehrId and practitioner.name is undefined", JSON.stringify(practitioner))
+            console.warn("[DEBUG] practitioner.ehrId and practitioner.name is undefined", JSON.stringify(practitioner))
         } else {
-            console.warn("[FhirClientWrapper.getPractitionerDirectly()] client.user.read() is not R4.RTTI_Practitioner", JSON.stringify(iPractitioner))
+            console.warn("[DEBUG] client.user.read() is not R4.RTTI_Practitioner", JSON.stringify(iPractitioner))
         }
-        return undefined
+
+        throw new Error(`Could not get practitioner via client.request, or via client.user.read`)
     }
 
-    public async getPractitioner(): Promise<Practitioner & { readonly organizationReference: string | undefined }> {
-        try {
-            const directPractitioner = await this.getPractitionerDirectly()
-            if (directPractitioner !== undefined) {
-                return directPractitioner
-            }
-        } catch (err) {
-            console.error(err)
-            console.info("Attempting to get practitioner via PractitionerRole")
-        }
+    /**
+     * TODO
+     *
+     * For DIPS, accessing the client.user.read or similar did not work, have to request the "PractitionerRole" like we do below instead.
+     * This seems to contain the Practitioner info we in the smart api demo would get back from client.user.read.
+     * I suspect this is a non-standard API call. Will perhaps need to make this more dynamic to adapt to other EHR systems.
+     * E.g. perhaps first check if client.user.id is set, and try using the standard client.user.read call if so. If the standard
+     * way is not available, go on to try this method. A potential problem with just using client.user.read, though, is that maybe
+     * the info about what organization (hospital) the practitioner is working for might not be available then.
+     *
+     * We use the flat option to directly get a ResourceList back instead of a Bundle wrapper object. Believe this is generally
+     * a good option to use, based on explanation at https://docs.smarthealthit.org/client-js/client.html
+     *
+     * DIPS and WebMed are separated as an illustration of complexity
+     */
+    public async getDipsPractitioner(): Promise<Practitioner & { readonly organizationReference: string | undefined }> {
+        console.info("Attempting to get practitioner via PractitionerRole")
 
-        // For DIPS, accessing the client.user.read or similar did not work, have to request the "PractitionerRole" like we do below instead.
-        // This seems to contain the Practitioner info we in the smart api demo would get back from client.user.read.
-        // I suspect this is a non-standard API call. Will perhaps need to make this more dynamic to adapt to other EHR systems.
-        // E.g. perhaps first check if client.user.id is set, and try using the standard client.user.read call if so. If the standard
-        // way is not available, go on to try this method. A potential problem with just using client.user.read, though, is that maybe
-        // the info about what organization (hospital) the practitioner is working for might not be available then.
-        //
-        // We use the flat option to directly get a ResourceList back instead of a Bundle wrapper object. Believe this is generally
-        // a good option to use, based on explanation at https://docs.smarthealthit.org/client-js/client.html
         const resourceList = iResourceListFromArray(await this.client.request<unknown[]>("PractitionerRole/$getCurrentUser", {flat: true}))
         const iPractitionerRole = iPractitionerRoleFromListing(resourceList)
+
         if (iPractitionerRole === undefined) {
             throw new Error("No PractitionerRole found in the $getCurrentUser bundle")
         }
+
         const practitionerFromRole = resolvePractitionerFromIPractitionerRole(iPractitionerRole)
         // If the practitioner info resolved from practitioner role is complete, return it
+
         if (
             practitionerFromRole.ehrId !== undefined &&
             practitionerFromRole.hprNumber !== undefined &&
@@ -141,16 +150,19 @@ export default class FhirClientWrapper implements FhirApi {
                 departmentReference: practitionerFromRole.departmentReference,
             }
         }
+
         // Practitioner role did not have complete info, try getting it from Practitioner endpoint
         if (iPractitionerRole?.practitioner?.reference === undefined) {
             throw new Error(`No practitioner reference in PractitionerRole from $getCurrentUser`)
         }
+
         const iPractitioner = validateOrThrow(R4.RTTI_Practitioner.decode(await this.client.request(iPractitionerRole.practitioner.reference)))
         const partialPractitioner = resolvePractitionerFromIPractitioner(iPractitioner)
         const mergedPractitioner: PartialPractitioner = {
             ...practitionerFromRole,
             ...partialPractitioner,
         }
+
         if (
             mergedPractitioner.ehrId !== undefined &&
             mergedPractitioner.hprNumber !== undefined &&
@@ -168,6 +180,15 @@ export default class FhirClientWrapper implements FhirApi {
         } else {
             throw new IncompletePractitioner(mergedPractitioner)
         }
+    }
+
+    public async getPractitioner(): Promise<Practitioner & { readonly organizationReference: string | undefined }> {
+        try {
+            return this.getWebMedPractitioner()
+        } catch (err) {
+            console.error(err)
+        }
+        return this.getDipsPractitioner()
     }
 
     public async createDocument(patientEhrId: string, practitionerRoleId: string, custodianReference: DipsDepartmentReference, description: LegeerklaeringDokumentReferanse, pdf: Blob): Promise<string> {
@@ -225,7 +246,7 @@ export default class FhirClientWrapper implements FhirApi {
     }
 
     public async getPatient(): Promise<Patient> {
-        const patient = validateOrThrow(R4.RTTI_Patient.decode(await this.client.patient.read()));
+        const patient = validateOrThrow(R4.RTTI_Patient.decode(await this.client.patient.read<Patient>()));
         const name = officialHumanNameResolver(patient.name)
         const ehrId = patient.id
         const fnr = patient.identifier instanceof Array && (fnrFromIdentifiers(patient.identifier) || dnrFromIdentifiers(patient.identifier)) || null
@@ -244,8 +265,8 @@ export default class FhirClientWrapper implements FhirApi {
     }
 
     public async getInitState(): Promise<InitData> {
-        const patientPromise = this.getPatient()
         const practitioner = await this.getPractitioner()
+        const patientPromise = this.getPatient()
         const hospital = practitioner.organizationReference !== undefined ? await this.getHospital(practitioner.organizationReference) : undefined;
         return {
             patient: await patientPromise,

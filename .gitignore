@@ -38,3 +38,7 @@ next-env.d.ts
 /.idea
 
 .env.*
+
+id_token.json
+access_token.json
+client.json

@@ -1,24 +1,22 @@
 'use client'
 
 import ChildrenProp from "@/utils/ChildrenProp";
-import {useSearchParams} from "next/navigation";
-import {useCallback, useEffect, useRef} from "react";
-import {clientInitInBrowser} from "@/integrations/fhir/clientInit";
-import {useAsyncInit} from "@/app/hooks/useAsyncInit";
-import FhirApiContext from "@/app/(withErrorCapture)/(withApis)/FhirApiContext";
+import {useCallback} from "react";
 import {configureLogger} from "@navikt/next-logger";
-import {initFakeFhirApi1} from "@/app/simulation/fakeFhirApi1";
-import {clearFakeFhirApiName, FakeFhirApiName, getFakeFhirApiName,} from "@/app/simulation/fakeFhirApiFlag";
-import AltLink from "@/app/(withErrorCapture)/(withApis)/alt/AltLink";
-import SimulationIndicator from "@/app/components/simulation/SimulationIndicator";
+import {useSearchParams} from "next/navigation";
+import {oauth2 as SMART} from "fhirclient";
+import FhirApiContext from "@/app/(withErrorCapture)/(withApis)/FhirApiContext";
 import SelfApiContext from "@/app/(withErrorCapture)/(withApis)/SelfApiContext";
-import {SelfClient} from "@/integrations/self/SelfClient";
-import Client from "fhirclient/lib/Client";
-import {FhirApi} from "@/integrations/fhir/FhirApi";
-import ProxiedFhirClientWrapper from "@/integrations/fhir/ProxiedFhirClientWrapper";
-import {recognizedServers} from "@/integrations/fhir/recognizedServers";
-import FhirClientWrapper from "@/integrations/fhir/FhirClientWrapper";
+import fhirAuthOptions from "@/auth/fhir/fhirAuthOptions";
+import AltLink from "@/app/(withErrorCapture)/(withApis)/alt/AltLink";
 import {BaseApi, BaseApiContext, useBaseApi} from "@/app/(withErrorCapture)/(withApis)/BaseApi";
+import {SelfClient} from "@/integrations/self/SelfClient";
+import {useAsyncInit} from "@/app/hooks/useAsyncInit";
+import FhirClientWrapper from "@/integrations/fhir/FhirClientWrapper";
+import ProxiedFhirClientWrapper from "@/integrations/fhir/ProxiedFhirClientWrapper";
+import {FhirApi} from "@/integrations/fhir/FhirApi";
+import {recognizedServers} from "@/integrations/fhir/recognizedServers";
+import Client from "fhirclient/lib/Client";
 
 export const dynamic = 'force-dynamic'
 
@@ -28,45 +26,38 @@ configureLogger({
 
 const Layout = ({children}: ChildrenProp) => {
     const searchParams = useSearchParams()
-    const isLaunch = searchParams.has("launch")
-    const prevIsLaunch = useRef<boolean | null>(null)
-    const fakeFhirApiName = useRef<FakeFhirApiName | null>(null)
+    const isLaunch = searchParams.has('launch')
 
-    useEffect(() => {
-        if (prevIsLaunch.current !== isLaunch) {
-            prevIsLaunch.current = isLaunch
-
-            if (!isLaunch) {
-                fakeFhirApiName.current = getFakeFhirApiName()
-            } else {
-                clearFakeFhirApiName()
-            }
-        }
-    }, [isLaunch])
-
-    // This callback can create the raw FHIR client instance
-    const fhirClientFactory: () => Promise<Client> = useCallback(() => {
-        return clientInitInBrowser(isLaunch)
-    }, [isLaunch])
-
-    // This callback can create a FhirApi instance, real or fake
-    const fhirApiFactory: () => Promise<FhirApi> = useCallback(() => {
-        if (fakeFhirApiName.current === "fake1") {
-            return initFakeFhirApi1()
+    const fhirClientFactory: () => Promise<Client> = useCallback(async () => {
+        if (isLaunch) {
+            return SMART.init(fhirAuthOptions).then(client => {
+                console.info("fhirClient initialized", JSON.stringify(client))
+                return client
+            })
         } else {
-            return fhirClientFactory().then(client => {
-                const serverUrl = client.state.serverUrl
-                switch (serverUrl) {
-                    case recognizedServers.OPENDIPS_TEST:
-                        console.info("Redirecting all traffic through proxy", serverUrl)
-                        return new ProxiedFhirClientWrapper(client)
-                    default:
-                        console.info("Direct client initialization from server", serverUrl)
-                        return new FhirClientWrapper(client)
-                }
-            });
+            return SMART.ready().then(client => {
+                console.info("fhirClient ready", JSON.stringify(client))
+                return client
+            })
         }
-    }, [fhirClientFactory, fakeFhirApiName])
+    }, [isLaunch])
+
+    const fhirApiFactory: () => Promise<FhirApi> = useCallback(async () => {
+        const client = await fhirClientFactory()
+
+        const serverUrl = client.state.serverUrl
+        console.info("FHIR server url:", serverUrl)
+
+        if (serverUrl === recognizedServers.OPENDIPS_TEST) {
+            /* TODO Open DIPS (test) krever at man legger til api-key på kallene,
+                derfor er dette en løsning kun for bruk med Open DIPS */
+            console.info("Redirecting all traffic through proxy", serverUrl)
+            return new ProxiedFhirClientWrapper(client)
+        }
+
+        console.info("Direct client initialization from server", serverUrl)
+        return new FhirClientWrapper(client)
+    }, [fhirClientFactory])
 
     const fhirApi = useAsyncInit(fhirApiFactory)
 
@@ -87,7 +78,6 @@ const Layout = ({children}: ChildrenProp) => {
             </SelfApiContext.Provider>
         </FhirApiContext.Provider>
         <AltLink></AltLink>
-        <SimulationIndicator simulationName={fakeFhirApiName.current || undefined}/>
     </>
 }
 
