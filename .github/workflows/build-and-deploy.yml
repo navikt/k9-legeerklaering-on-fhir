@@ -37,7 +37,7 @@ jobs:
       TAG: ${{ steps.docker-tag.outputs.TAG }}
     steps:
       - name: Hente kode
-        uses: actions/checkout@v4.1.6
+        uses: actions/checkout@v4.1.7
 
       - name: Sette opp Node
         uses: actions/setup-node@v4
@@ -51,7 +51,7 @@ jobs:
         run: npm ci
 
       - name: Login to docker
-        uses: docker/login-action@v3.1.0
+        uses: docker/login-action@v3.3.0
         with:
           registry: ghcr.io
           username: ${{ github.REPOSITORY_OWNER }}
@@ -80,7 +80,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ docker ]
     steps:
-      - uses: actions/checkout@v4.1.6
+      - uses: actions/checkout@v4.1.7
       - name: Deploye til dev-gcp
         uses: nais/deploy/actions/deploy@v2
         env:
@@ -96,7 +96,7 @@ jobs:
 #    runs-on: ubuntu-latest
 #    needs: [ docker ]
 #    steps:
-#      - uses: actions/checkout@v4.1.6
+#      - uses: actions/checkout@v4.1.7
 #      - name: Deploye til dev-gcp
 #        uses: nais/deploy/actions/deploy@v2
 #        env:
